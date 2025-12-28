@@ -1,99 +1,134 @@
 import streamlit as st
-import pandas as pd
+import plotly.graph_objects as go
 import plotly.express as px
+
 from utils.extract_text import extract_text
 from utils.analyse_resume import analyse_resume
 from utils.compare_jobdesc import compare_resume_with_job
 from utils.ats_score import calculate_ats_score
 
-# Streamlit Page Setup
-st.set_page_config(page_title="📄 Resume Analyser Dashboard", layout="wide", page_icon="📊")
+st.set_page_config(
+    page_title="AI Resume Analyzer",
+    page_icon="📄",
+    layout="wide"
+)
 
-# Custom CSS for better card visibility
+# cuwtom css for button
 st.markdown("""
-    <style>
-    .main {background-color: #f8f9fa;}
-    .title {font-size:32px; color:#2c3e50; text-align:center; font-weight:bold;}
-    </style>
+<style>
+.big-button button {
+    background-color: #4CAF50;
+    color: white;
+    font-size: 20px;
+    padding: 10px 24px;
+    border-radius: 10px;
+}
+</style>
 """, unsafe_allow_html=True)
 
-# Title
-st.markdown("<h1 class='title'>📊 AI Resume Analyser Dashboard</h1>", unsafe_allow_html=True)
-st.write("Upload your resume, analyze keywords, and compare it with a job description.")
+st.title("Resume Analyzer")
+st.caption("Analyze your resume against a job description and improve your ATS score")
 
-# Sidebar
-st.sidebar.header("⚙️ Configuration")
-uploaded_file = st.sidebar.file_uploader("Upload Resume", type=["pdf", "docx"])
-job_description = st.sidebar.text_area("Paste Job Description (optional)")
-st.sidebar.info("💡 Tip: Paste a job description to check skill match and similarity score.")
+st.divider()
 
-# Main Logic
-if uploaded_file:
-    with st.spinner("🔍 Extracting text from resume..."):
-        resume_text = extract_text(uploaded_file)
+col1, col2 = st.columns(2)
 
-    st.subheader("📄 Resume Preview")
-    st.text_area("Extracted Resume Text", resume_text[:1500] + "...", height=250)
-
-    with st.spinner("🧠 Analyzing resume content..."):
-        analysis = analyse_resume(resume_text)
-
-    # Colored Metrics Cards
-    col1, col2, col3 = st.columns(3)
-    col1.markdown(f"<div style='background-color:#1abc9c; color:white; padding:20px; border-radius:15px; text-align:center'><h4>Total Words</h4><h3>{analysis['word_count']}</h3></div>", unsafe_allow_html=True)
-    col2.markdown(f"<div style='background-color:#3498db; color:white; padding:20px; border-radius:15px; text-align:center'><h4>Skills Found</h4><h3>{len(analysis['skills_found'])}</h3></div>", unsafe_allow_html=True)
-    col3.markdown(f"<div style='background-color:#9b59b6; color:white; padding:20px; border-radius:15px; text-align:center'><h4>Entities Extracted</h4><h3>{len(analysis['entities_found'])}</h3></div>", unsafe_allow_html=True)
-
-    # Skills Table
-    st.subheader("💼 Skills Identified")
-    if analysis["skills_found"]:
-        df_skills = pd.DataFrame({"Skills": analysis["skills_found"]})
-        st.dataframe(df_skills.style.set_properties(**{'background-color': '#f0f9ff','color': '#0a3d62','border-color': '#ffffff'}))
-    else:
-        st.warning("No predefined skills found in this resume.")
-
-    # Entities Chart
-    if analysis["entities_found"]:
-        entity_df = pd.DataFrame(analysis["entities_found"], columns=["Text","Label"])
-        entity_count = entity_df['Label'].value_counts().reset_index()
-        entity_count.columns = ['Entity','Count']
-        entity_chart = px.bar(
-            entity_count, x='Entity', y='Count',
-            color='Entity', title="Named Entity Distribution",
-            color_discrete_sequence=px.colors.sequential.PuBu
-        )
-        st.plotly_chart(entity_chart, use_container_width=True)
-
-    # Job Comparison
-    match_score, common_skills = 0, []
-    if job_description.strip():
-        match_score, common_skills = compare_resume_with_job(resume_text, job_description)
-        st.subheader("🎯 Resume Match Score")
-        st.metric(label="Match Percentage", value=f"{match_score:.2f}%")
-        st.progress(match_score/100)
-        st.success(f"🧩 Common Keywords: {', '.join(common_skills) if common_skills else 'None'}")
-
-    # ATS Score
-    ats_score = calculate_ats_score(
-        resume_skills=analysis["skills_found"],
-        resume_text=resume_text,
-        job_description=job_description,
-        experience_keywords=["experience","years","projects"],
-        education_keywords=["bachelor","master","degree","phd"]
+with col1:
+    resume_file = st.file_uploader(
+        "Upload Resume (PDF / DOCX)",
+        type=["pdf", "docx"]
     )
-    st.subheader("📝 ATS Score")
-    st.metric("ATS Score (%)", f"{ats_score}%")
-    st.progress(ats_score/100)
 
-    # Common Skills Chart
-    if common_skills:
-        chart_df = pd.DataFrame({"Skill": common_skills, "Count":[1]*len(common_skills)})
-        skill_chart = px.bar(
-            chart_df, x="Skill", y="Count", color="Skill",
-            color_discrete_sequence=px.colors.sequential.Blues,
-            title="Common Skills Between Resume and Job Description"
-        )
-        st.plotly_chart(skill_chart, use_container_width=True)
+with col2:
+    job_description = st.text_area(
+        "Paste Job Description",
+        height=220,
+        placeholder="Paste job requirements here..."
+    )
 
-else:
-    st.info("⬆️ Upload a resume to start the analysis.")
+st.markdown("<div class='big-button'>", unsafe_allow_html=True)
+analyze = st.button("Analyze Resume")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------- ANALYSIS ----------------
+if analyze:
+    if not resume_file or not job_description.strip():
+        st.warning("Please upload resume and paste job description.")
+    else:
+        with st.spinner("Analyzing resume..."):
+            resume_text = extract_text(resume_file)
+
+            resume_data = analyse_resume(resume_text)
+            resume_skills = resume_data["skills_found"]
+
+            similarity_score, _ = compare_resume_with_job(
+                resume_text, job_description
+            )
+
+            ats_score = calculate_ats_score(
+                resume_skills,
+                resume_text,
+                job_description
+            )
+
+            # skill gap analysis
+            job_words = set(job_description.lower().split())
+            resume_words = set(resume_text.lower().split())
+
+            missing_skills = list(job_words - resume_words)
+            missing_skills = missing_skills[:10]
+
+        st.success(" Analysis Completed")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Resume Match", f"{similarity_score:.1f}%")
+        m2.metric("ATS Score", f"{ats_score}%")
+        m3.metric("Resume Words", resume_data["word_count"])
+
+        st.divider()
+
+        # ats scroe gauge
+        gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=ats_score,
+            title={'text': "ATS Score"},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "green"},
+                'steps': [
+                    {'range': [0, 40], 'color': "red"},
+                    {'range': [40, 70], 'color': "orange"},
+                    {'range': [70, 100], 'color': "lightgreen"}
+                ],
+            }
+        ))
+
+        st.plotly_chart(gauge, use_container_width=True)
+
+        # existing skills
+        st.subheader("Skills Found in Resume")
+        if resume_skills:
+            st.write(", ".join(resume_skills))
+        else:
+            st.warning("No key skills detected.")
+
+        # what skills need to improve
+        st.subheader("Skills / Keywords to Improve")
+
+        if missing_skills:
+            df = {
+                "Skill": missing_skills,
+                "Importance": [1] * len(missing_skills)
+            }
+
+            fig = px.bar(
+                df,
+                x="Skill",
+                y="Importance",
+                color="Skill",
+                title="Missing Skills from Job Description"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.success(" Your resume already matches the job well!")
